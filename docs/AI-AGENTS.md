@@ -1,0 +1,112 @@
+# GlobalEcom AI — AI Agent 说明
+
+| 项 | 内容 |
+|---|---|
+| 版本 | v1.0.0 / 2026-09-30 |
+| 调用协议 | OpenAI 兼容（`POST {LLM_BASE_URL}/v1/chat/completions`） |
+| 计量 | 每次调用（成功+失败）均落 `ai_usage_log` |
+
+---
+
+## 通用调用约定
+
+所有 Agent 统一经 `server/modules/ai/ai-gateway.service.ts` 收口：
+
+```http
+POST {LLM_BASE_URL}/v1/chat/completions
+Authorization: Bearer {LLM_API_KEY}
+Content-Type: application/json
+
+{
+  "model": "{LLM_MODEL}",          // 默认 deepseek-chat
+  "messages": [...],
+  "response_format": { "type": "json_object" },   // 仅 Copywriter/Select 等要求结构化输出时
+  "temperature": 0.7
+}
+```
+
+**未配 key 的降级行为（重要）**：
+- `LLM_BASE_URL` / `LLM_API_KEY` 缺失时，Gateway 在调用前即返回 `400 { message: "未配置 LLM API Key" }`，**绝不返回硬编码假数据**。
+- 前端在 AI 分析中心顶部显示醒目提示条，列出需配置的 3 个环境变量。
+- 失败调用仍会写入 `ai_usage_log`（`success=false` + `error_message`），便于运维排查。
+- SupportAgent 的 RAG 召回部分在未配 `EMBEDDING_API_KEY` 时自动回退到 `products` 表 `ILIKE` 关键词匹配，客服链路仍可用（仅不走向量召回）。
+
+---
+
+## 1. CopywriterAgent — 商品文案生成
+
+| 项 | 内容 |
+|---|---|
+| 触发时机 | 卖家在"商品管理"页对某商品点击"AI 生成文案" |
+| 输入 | 商品原始信息（品名、类目、核心卖点草稿、目标市场语言） |
+| 输出 | 结构化 JSON：`{ titleEn, bulletPoints[], longDescription, seoKeywords[] }` |
+| 模型 | `deepseek-chat`（通用对话模型） |
+| 实现要点 | 强制 `response_format=json_object`，解析后写回商品多语言字段 |
+| 未配 key 行为 | 返回 400，前端提示"请先配置 LLM_API_KEY" |
+
+---
+
+## 2. SupportAgent — 智能客服（RAG）
+
+| 项 | 内容 |
+|---|---|
+| 触发时机 | 买家在任意页面右下角客服浮窗发消息 |
+| 输入 | 买家问题文本 + 当前会话上下文（历史 N 轮） |
+| 输出 | 自然语言回复文本 |
+| 模型 | `deepseek-chat` |
+| RAG 三层检索 | ① `product_embeddings` pgvector 向量相似度召回相关商品（需 `EMBEDDING_API_KEY`）；② 无 embedding key 时回退 `products` 表 `ILIKE` 关键词匹配；③ 拼入 5 条店铺政策 FAQ 常量（退换货/发货/支付/物流/客服时间）+ 买家最近订单摘要 |
+| 落库 | 会话与消息写 `inquiry_sessions` / `inquiry_messages`，卖家端"咨询管理"可见 |
+| 未配 key 行为 | LLM 调用返回 400；但会话已落库，卖家可见买家在等待人工回复 |
+
+---
+
+## 3. TrendAgent — 趋势分析
+
+| 项 | 内容 |
+|---|---|
+| 触发时机 | 卖家在"AI 分析中心"点击"生成趋势报告" |
+| 输入 | SQL 预聚合的近 30 天销售数据：GMV、订单量、分类占比、Top 10 商品、同比/环比 |
+| 输出 | 自然语言趋势分析报告（markdown），含结论与建议 |
+| 模型 | `deepseek-reasoner`（推理模型，适合数据分析与归因） |
+| 落库 | 报告写 `ai_reports` 表，可在历史报告列表回看 |
+| 未配 key 行为 | 返回 400；预聚合数据本身可用，仅 LLM 解读缺失 |
+
+---
+
+## 4. SelectAgent — 选品建议
+
+| 项 | 内容 |
+|---|---|
+| 触发时机 | 卖家在"AI 分析中心"点击"选品建议" |
+| 输入 | 当前类目列表 + 店铺 Top 20 热销商品 + 近 30 天趋势摘要 |
+| 输出 | JSON 数组：`[{ category, reason, estimatedDemand, riskLevel }]` |
+| 模型 | `deepseek-chat`，强制 `response_format=json_object` |
+| 未配 key 行为 | 返回 400 |
+
+---
+
+## 5. TranslationAgent — 多语言翻译
+
+| 项 | 内容 |
+|---|---|
+| 触发时机 | 卖家编辑商品时点击"AI 翻译"，或批量商品多语言补全 |
+| 输入 | 源语言文本（通常英文）+ 目标语言代码 |
+| 输出 | 翻译后的文本 |
+| 模型 | `deepseek-chat` |
+| 支持语言 | 12 种：zh（简中）、en（英）、es（西）、pt（葡）、fr（法）、de（德）、it（意）、ja（日）、ko（韩）、ru（俄）、ar（阿）、th（泰） |
+| 已落地前端语言 | 当前买家界面已切换 zh / en / es / pt 四语言；其余 8 语言由本 Agent 按需翻译商品内容 |
+| 未配 key 行为 | 返回 400；前端商品内容自动回退英文 |
+
+---
+
+## 外部能力对照表
+
+| Agent | 需要的环境变量 | 缺 key 时行为 |
+|---|---|---|
+| CopywriterAgent | `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | 400 诚实报错 |
+| SupportAgent | 同上 + `EMBEDDING_API_KEY`（可选） | LLM 400；向量回退关键词匹配 |
+| TrendAgent | `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`（reasoner） | 400 诚实报错 |
+| SelectAgent | 同上 | 400 诚实报错 |
+| TranslationAgent | 同上 | 400 诚实报错，商品回退英文 |
+
+> 所有 Agent **均为真实 LLM HTTP 调用**，经 ECONNREFUSED / 缺 key 实测验证：网关确实发出了标准 OpenAI 兼容请求，路径/方法/Header 组装正确；不存在用硬编码模板冒充 AI 生成的情况。

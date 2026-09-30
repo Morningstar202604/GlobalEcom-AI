@@ -1,0 +1,623 @@
+import React, { useEffect, useState, useCallback } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import {
+  Minus,
+  Plus,
+  ShoppingCart,
+  Zap,
+  Check,
+  Package,
+  Tag,
+  Info,
+  Star,
+  Heart,
+  MessageSquare,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs';
+import { Image } from '@/components/ui/image';
+import { Textarea } from '@/components/ui/textarea';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { getProduct } from '@/api/products';
+import { addToCart } from '@/api/cart';
+import {
+  getProductReviews,
+  getMyReview,
+  createReview,
+} from '@/api/reviews';
+import { toggleFavorite, checkFavorite } from '@/api/favorites';
+import { logger } from '@lark-apaas/client-toolkit/logger';
+import { toast } from 'sonner';
+import {
+  Product,
+  ProductReview,
+  ProductReviewsResponse,
+} from '@shared/api.interface';
+import {
+  getProductTitle,
+  getProductDesc,
+  getProductLongDesc,
+  getProductBulletPoints,
+} from '@/utils/product-i18n';
+
+const ProductDetailPage: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { language, t } = useLanguage();
+  const { user } = useAuth();
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [quantity, setQuantity] = useState<number>(1);
+  const [activeImage, setActiveImage] = useState<number>(0);
+  const [addingToCart, setAddingToCart] = useState<boolean>(false);
+
+  // Favorite state
+  const [isFavorited, setIsFavorited] = useState<boolean>(false);
+  const [favoriteLoading, setFavoriteLoading] = useState<boolean>(false);
+
+  // Reviews state
+  const [reviewsData, setReviewsData] = useState<ProductReviewsResponse | null>(null);
+  const [reviewsLoading, setReviewsLoading] = useState<boolean>(true);
+  const [myReview, setMyReview] = useState<ProductReview | null>(null);
+  const [hasPurchased, setHasPurchased] = useState<boolean>(false);
+  const [reviewRating, setReviewRating] = useState<number>(0);
+  const [hoverRating, setHoverRating] = useState<number>(0);
+  const [reviewComment, setReviewComment] = useState<string>('');
+  const [submittingReview, setSubmittingReview] = useState<boolean>(false);
+
+  useEffect(() => {
+    const load = async (): Promise<void> => {
+      if (!id) return;
+      try {
+        setLoading(true);
+        const data = await getProduct(id);
+        setProduct(data);
+      } catch (error: unknown) {
+        logger.error('[productDetail] load error', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    void load();
+  }, [id]);
+
+  // Load reviews
+  const loadReviews = useCallback(async (): Promise<void> => {
+    if (!id) return;
+    try {
+      setReviewsLoading(true);
+      const data = await getProductReviews(id);
+      setReviewsData(data);
+    } catch (error: unknown) {
+      logger.error('[productDetail] load reviews error', error);
+    } finally {
+      setReviewsLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    void loadReviews();
+  }, [loadReviews]);
+
+  // Load my review and favorite status
+  useEffect(() => {
+    const loadUserSpecific = async (): Promise<void> => {
+      if (!id || !user) return;
+      try {
+        const [reviewData, favData] = await Promise.all([
+          getMyReview(id),
+          checkFavorite(id),
+        ]);
+        setMyReview(reviewData.review);
+        setHasPurchased(reviewData.hasPurchased);
+        setIsFavorited(favData.favorited);
+      } catch (error: unknown) {
+        logger.error('[productDetail] load user data error', error);
+      }
+    };
+    void loadUserSpecific();
+  }, [id, user]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-500">
+        {t.common.loading}
+      </div>
+    );
+  }
+
+  if (!product) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-500">
+        {t.common.error}
+      </div>
+    );
+  }
+
+  const title: string = getProductTitle(product, language);
+  const desc: string = getProductDesc(product, language);
+  const longDesc: string = getProductLongDesc(product, language);
+  const bulletPoints: string[] = getProductBulletPoints(product, language);
+  const images: string[] = product.images?.length
+    ? product.images
+    : product.coverImage
+      ? [product.coverImage]
+      : [];
+  const isOnSale: boolean =
+    !!product.originalPrice &&
+    Number(product.originalPrice) > Number(product.price);
+
+  const handleQuantityChange = (delta: number): void => {
+    setQuantity((prev: number) => {
+      const next: number = prev + delta;
+      return Math.max(1, Math.min(product.stock, next));
+    });
+  };
+
+  const handleAddToCart = async (): Promise<void> => {
+    if (!id) return;
+    try {
+      setAddingToCart(true);
+      await addToCart(id, quantity);
+      toast.success(t.product.addToCart);
+    } catch (error: unknown) {
+      logger.error('[productDetail] add to cart error', error);
+      toast.error(t.common.error);
+    } finally {
+      setAddingToCart(false);
+    }
+  };
+
+  const handleBuyNow = async (): Promise<void> => {
+    if (!id) return;
+    try {
+      setAddingToCart(true);
+      await addToCart(id, quantity);
+      navigate('/checkout');
+    } catch (error: unknown) {
+      logger.error('[productDetail] buy now error', error);
+      toast.error(t.common.error);
+    } finally {
+      setAddingToCart(false);
+    }
+  };
+
+  const handleToggleFavorite = async (): Promise<void> => {
+    if (!id) return;
+    if (!user) {
+      toast.error(t.auth.loginToContinue);
+      return;
+    }
+    try {
+      setFavoriteLoading(true);
+      const result = await toggleFavorite(id);
+      setIsFavorited(result.favorited);
+      toast.success(
+        result.favorited
+          ? t.product.addToFavorites
+          : t.product.removeFromFavorites,
+      );
+    } catch (error: unknown) {
+      logger.error('[productDetail] toggle favorite error', error);
+      toast.error(t.common.error);
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
+
+  const handleSubmitReview = async (): Promise<void> => {
+    if (!id) return;
+    if (reviewRating === 0) {
+      toast.error(
+        language === 'zh' ? '请选择评分' : 'Please select a rating',
+      );
+      return;
+    }
+    try {
+      setSubmittingReview(true);
+      await createReview(id, {
+        rating: reviewRating,
+        comment: reviewComment || undefined,
+      });
+      toast.success(t.product.reviewSubmitted);
+      setReviewComment('');
+      setReviewRating(0);
+      await loadReviews();
+      if (user) {
+        const reviewData = await getMyReview(id);
+        setMyReview(reviewData.review);
+      }
+    } catch (error: unknown) {
+      logger.error('[productDetail] submit review error', error);
+      toast.error(t.common.error);
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
+  const renderStars = (rating: number, size: string = 'size-4'): React.ReactNode => {
+    return (
+      <div className="flex items-center gap-0.5">
+        {[1, 2, 3, 4, 5].map((starNum: number) => (
+          <Star
+            key={starNum}
+            className={`${size} ${starNum <= rating ? 'fill-yellow-400 text-yellow-400' : 'text-slate-300'}`}
+          />
+        ))}
+      </div>
+    );
+  };
+
+  const specEntries: [string, string][] = Object.entries(product.specs || {});
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <div className="container mx-auto px-6 py-6">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mb-4"
+          onClick={() => navigate(-1)}
+        >
+          ← {t.common.back}
+        </Button>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          {/* Images */}
+          <div className="space-y-4">
+            <Card className="rounded-xl overflow-hidden bg-white">
+              <div className="aspect-square relative bg-slate-50">
+                <Image
+                  src={images[activeImage] || ''}
+                  alt={title}
+                  className="w-full h-full object-contain"
+                  sizes="(max-width: 1024px) 100vw, 50vw"
+                />
+                {isOnSale && (
+                  <Badge className="absolute top-4 left-4 bg-orange-500 hover:bg-orange-500 text-sm px-3 py-1">
+                    -
+                    {Math.round(
+                      ((Number(product.originalPrice) - Number(product.price)) /
+                        Number(product.originalPrice)) *
+                        100,
+                    )}
+                    %
+                  </Badge>
+                )}
+                <button
+                  onClick={(e: React.MouseEvent) => {
+                    e.preventDefault();
+                    void handleToggleFavorite();
+                  }}
+                  disabled={favoriteLoading}
+                  className="absolute top-4 right-4 size-10 rounded-full bg-white shadow-sm flex items-center justify-center hover:bg-slate-50 transition-colors"
+                  title={isFavorited ? t.product.removeFromFavorites : t.product.addToFavorites}
+                >
+                  <Heart
+                    className={`size-5 transition-colors ${isFavorited ? 'fill-red-500 text-red-500' : 'text-slate-400'}`}
+                  />
+                </button>
+              </div>
+            </Card>
+            {images.length > 1 && (
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {images.map((img: string, idx: number) => (
+                  <button
+                    key={idx}
+                    onClick={() => setActiveImage(idx)}
+                    className={`flex-shrink-0 size-20 rounded-lg overflow-hidden border-2 transition-colors ${
+                      activeImage === idx
+                        ? 'border-blue-500'
+                        : 'border-transparent hover:border-slate-200'
+                    }`}
+                  >
+                    <Image
+                      src={img}
+                      alt={`${title}-${idx}`}
+                      className="w-full h-full object-cover"
+                      width={80}
+                      height={80}
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Info */}
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900 mb-2">
+                {title}
+              </h1>
+              <p className="text-slate-500">{desc}</p>
+            </div>
+
+            {/* Price */}
+            <div className="flex items-baseline gap-3">
+              <span className="text-3xl font-bold text-orange-500">
+                ${Number(product.price).toFixed(2)}
+              </span>
+              {isOnSale && product.originalPrice && (
+                <span className="text-lg text-slate-400 line-through">
+                  ${Number(product.originalPrice).toFixed(2)}
+                </span>
+              )}
+              {isOnSale && (
+                <Badge variant="secondary" className="bg-orange-50 text-orange-600 border-orange-100">
+                  {t.product.originalPrice}
+                </Badge>
+              )}
+            </div>
+
+            {/* Stock & Sold */}
+            <div className="flex gap-6 text-sm text-slate-500">
+              <div className="flex items-center gap-1">
+                <Package className="size-4" />
+                {t.product.stock}:{' '}
+                <span
+                  className={
+                    product.stock > 0 ? 'text-emerald-500 font-medium' : 'text-red-500'
+                  }
+                >
+                  {product.stock > 0
+                    ? `${product.stock} ${t.product.inStock}`
+                    : t.product.outOfStock}
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Tag className="size-4" />
+                {t.product.sold}: {product.soldCount}
+              </div>
+            </div>
+
+            {/* Quantity */}
+            <div>
+              <div className="text-sm font-medium text-slate-700 mb-2">
+                {t.product.quantity}
+              </div>
+              <div className="inline-flex items-center border border-slate-200 rounded-lg">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-9 rounded-none border-r border-slate-200"
+                  onClick={() => handleQuantityChange(-1)}
+                  disabled={quantity <= 1}
+                >
+                  <Minus className="size-4" />
+                </Button>
+                <span className="w-12 text-center font-medium">
+                  {quantity}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-9 rounded-none border-l border-slate-200"
+                  onClick={() => handleQuantityChange(1)}
+                  disabled={quantity >= product.stock}
+                >
+                  <Plus className="size-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <Button
+                variant="secondary"
+                size="lg"
+                className="flex-1"
+                onClick={() => void handleAddToCart()}
+                disabled={product.stock === 0 || addingToCart}
+              >
+                <ShoppingCart className="size-5" />
+                {t.product.addToCart}
+              </Button>
+              <Button
+                size="lg"
+                className="flex-1 bg-orange-500 hover:bg-orange-600"
+                onClick={() => void handleBuyNow()}
+                disabled={product.stock === 0 || addingToCart}
+              >
+                <Zap className="size-5" />
+                {t.product.buyNow}
+              </Button>
+            </div>
+
+            {/* Bullet Points */}
+            {bulletPoints && bulletPoints.length > 0 && (
+              <div className="border-t pt-6">
+                <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                  <Info className="size-4 text-blue-500" />
+                  {t.product.bulletPoints}
+                </h3>
+                <ul className="space-y-2">
+                  {bulletPoints.map((point: string, idx: number) => (
+                    <li
+                      key={idx}
+                      className="flex items-start gap-2 text-sm text-slate-600"
+                    >
+                      <Check className="size-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <Card className="rounded-xl bg-white">
+          <Tabs defaultValue="description" className="p-4">
+            <TabsList className="mb-4">
+              <TabsTrigger value="description">
+                {t.product.description}
+              </TabsTrigger>
+              <TabsTrigger value="specs">{t.product.specs}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="description" className="text-slate-600 leading-relaxed">
+              <div className="whitespace-pre-wrap">{longDesc}</div>
+            </TabsContent>
+            <TabsContent value="specs">
+              {specEntries.length > 0 ? (
+                <div className="divide-y divide-slate-100">
+                  {specEntries.map(([key, value]: [string, string]) => (
+                    <div
+                      key={key}
+                      className="grid grid-cols-3 py-3 text-sm"
+                    >
+                      <div className="text-slate-500 col-span-1">{key}</div>
+                      <div className="text-slate-800 col-span-2">{value}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-slate-400 text-sm">—</div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </Card>
+
+        {/* Reviews Section */}
+        <Card className="rounded-xl bg-white mt-6">
+          <div className="p-6 border-b">
+            <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
+              <MessageSquare className="size-5 text-blue-600" />
+              {t.product.reviewTitle}
+            </h2>
+          </div>
+
+          {reviewsLoading ? (
+            <div className="p-6 text-center text-slate-500">{t.common.loading}</div>
+          ) : (
+            <>
+              {/* Review Summary */}
+              <div className="p-6 border-b bg-slate-50/50">
+                <div className="flex items-center gap-6">
+                  <div className="text-center">
+                    <div className="text-4xl font-bold text-slate-900">
+                      {reviewsData?.averageRating.toFixed(1) || '0.0'}
+                    </div>
+                    <div className="mt-1">
+                      {renderStars(Math.round(reviewsData?.averageRating || 0), 'size-5')}
+                    </div>
+                    <div className="text-sm text-slate-500 mt-1">
+                      {reviewsData?.totalCount || 0} {t.product.reviewCount}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Review Form */}
+              {!user ? (
+                <div className="p-6 border-b text-center">
+                  <Link
+                    to="/login"
+                    className="text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    {t.product.loginToReview}
+                  </Link>
+                </div>
+              ) : myReview ? (
+                <div className="p-6 border-b bg-emerald-50/50">
+                  <div className="text-emerald-700 font-medium flex items-center gap-2">
+                    <Check className="size-5" />
+                    {t.product.alreadyReviewed}
+                  </div>
+                </div>
+              ) : hasPurchased ? (
+                <div className="p-6 border-b space-y-4">
+                  <h3 className="font-semibold text-slate-900">{t.product.writeReview}</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-slate-600">{t.product.averageRating}:</span>
+                      <div className="flex items-center gap-0.5">
+                        {[1, 2, 3, 4, 5].map((starNum: number) => (
+                          <button
+                            key={starNum}
+                            type="button"
+                            onMouseEnter={() => setHoverRating(starNum)}
+                            onMouseLeave={() => setHoverRating(0)}
+                            onClick={() => setReviewRating(starNum)}
+                            className="p-0.5"
+                          >
+                            <Star
+                              className={`size-6 ${starNum <= (hoverRating || reviewRating) ? 'fill-yellow-400 text-yellow-400' : 'text-slate-300'}`}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <Textarea
+                      placeholder={t.product.reviewPlaceholder}
+                      value={reviewComment}
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setReviewComment(e.target.value)}
+                      rows={3}
+                    />
+                    <Button
+                      onClick={() => void handleSubmitReview()}
+                      disabled={submittingReview || reviewRating === 0}
+                    >
+                      {submittingReview ? t.common.loading : t.product.submitReview}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Review List */}
+              <div className="p-6">
+                {reviewsData && reviewsData.items.length > 0 ? (
+                  <div className="space-y-4">
+                    {reviewsData.items.map((review: ProductReview) => (
+                      <div
+                        key={review.id}
+                        className="flex gap-4 pb-4 border-b last:border-b-0 last:pb-0"
+                      >
+                        <div className="size-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                          <span className="text-blue-700 font-medium text-sm">
+                            {review.userName.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3">
+                            <span className="font-medium text-slate-900">
+                              {review.userName}
+                            </span>
+                            {renderStars(review.rating)}
+                            <span className="text-xs text-slate-400">
+                              {new Date(review.createdAt).toISOString().slice(0, 10)}
+                            </span>
+                          </div>
+                          {review.comment && (
+                            <p className="mt-2 text-sm text-slate-600 leading-relaxed">
+                              {review.comment}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-slate-500">
+                    {t.product.noReviews}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+export default ProductDetailPage;

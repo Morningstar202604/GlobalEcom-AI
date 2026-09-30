@@ -1,0 +1,40 @@
+version: "3.9"
+
+# GlobalEcom AI 出口电商平台 — 部署编排
+# 说明：本文件为导出重建时按 .env.example / docker/postgres/init.sql 的约定补齐的参考版本。
+# 首次启动 postgres 会自动执行 init.sql 创建 vector / pg_trgm 扩展。
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: globalecom-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-globalecom}
+      POSTGRES_USER: ${POSTGRES_USER:-globalecom}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-globalecom_pass}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-globalecom} -d ${POSTGRES_DB:-globalecom}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 应用服务：按实际构建产物补充；此处先以注释占位，按需启用
+  # app:
+  #   build: .
+  #   container_name: globalecom-app
+  #   restart: unless-stopped
+  #   ports:
+  #     - "${SERVER_PORT:-3000}:3000"
+  #   env_file: .env
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+
+volumes:
+  postgres_data:

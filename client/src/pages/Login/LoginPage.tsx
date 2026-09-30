@@ -1,0 +1,105 @@
+import React, { useState } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
+import { logger } from '@lark-apaas/client-toolkit/logger';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card } from '@/components/ui/card';
+import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import logoMain from '@/assets/branding/logo-main.png';
+import { Image } from '@client/src/components/ui/image';
+
+const LoginPage: React.FC = () => {
+  const { t } = useLanguage();
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const from = (location.state as { from?: string } | null)?.from || '/';
+
+  const handleSubmit = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
+    if (!email || !password) {
+      toast.error('请输入邮箱和密码');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await login({ email, password });
+      toast.success('登录成功');
+      navigate(from, { replace: true });
+    } catch (err) {
+      logger.error('Login failed', err);
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message || '登录失败';
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0B1F3A] via-[#0f2a4a] to-[#0B1F3A] py-12 px-4">
+      <Card className="w-full max-w-md p-8">
+        <div className="text-center mb-8">
+          <div className="flex justify-center mb-4">
+            <Image
+              src={logoMain}
+              alt="GlobalEcom AI"
+              className="h-16 w-16 object-contain rounded-xl"
+            />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">
+            {t.auth.welcomeBack}
+          </h1>
+          <p className="text-sm text-slate-500">GlobalEcom AI · AI 让跨境生意更简单</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="email">{t.auth.email}</Label>
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              autoComplete="email"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="password">{t.auth.password}</Label>
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
+            />
+          </div>
+
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            {t.auth.signIn}
+          </Button>
+        </form>
+
+        <div className="mt-6 text-center text-sm text-slate-500">
+          {t.auth.noAccount}{' '}
+          <Link to="/register" className="text-[#00C2B8] hover:underline font-medium">
+            {t.auth.signUp}
+          </Link>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+export default LoginPage;

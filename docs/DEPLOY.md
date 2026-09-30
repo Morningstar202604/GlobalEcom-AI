@@ -1,0 +1,123 @@
+# GlobalEcom AI 出口电商平台 — 部署指南
+
+| 项 | 内容 |
+|---|---|
+| 应用 | GlobalEcom AI（AI 原生跨境出货台） |
+| 技术栈 | React 19 + NestJS 10 + Drizzle ORM + PostgreSQL 16（pgvector / pg_trgm） |
+| 文档版本 | v1.0.0 / 2026-09-30 |
+
+---
+
+## 一、环境要求
+
+| 组件 | 要求 |
+|---|---|
+| 操作系统 | Ubuntu 22.04 / Debian 12 / 任意支持 Docker 的 Linux |
+| Docker | ≥ 24.x |
+| Docker Compose | ≥ v2 |
+| 内存 | ≥ 2GB（PostgreSQL + Node 服务） |
+| 磁盘 | ≥ 20GB |
+| 网络 | 可访问外网（调用 LLM / Stripe / PayPal / 17TRACK API） |
+
+---
+
+## 二、获取密钥清单
+
+部署前在各服务商处申请以下密钥，填入 `.env`。**未填的能力自动进入演示模式，不会阻断启动。**
+
+| 环境变量 | 用途 | 获取位置 |
+|---|---|---|
+| `LLM_BASE_URL` | AI 大模型端点 | DeepSeek `https://api.deepseek.com`；或火山方舟 / OpenAI / 通义等 OpenAI 兼容地址 |
+| `LLM_API_KEY` | AI 大模型密钥 | 对应服务商控制台（DeepSeek 为 `sk-xxx`） |
+| `LLM_MODEL` | 模型名（可选） | 如 `deepseek-chat` |
+| `JWT_SECRET` | 登录签名密钥 | 自生成：`openssl rand -hex 32`（生产必填，≥32 位） |
+| `STRIPE_SECRET_KEY` | 真实收款 | Stripe Dashboard → Developers → API keys（`sk_live_...`） |
+| `STRIPE_WEBHOOK_SECRET` | Stripe 回调验签 | Stripe Dashboard → Webhooks → 新增 endpoint 后获取 |
+| `PAYPAL_CLIENT_ID` | PayPal 收款 | PayPal Developer → Apps & Credentials |
+| `PAYPAL_CLIENT_SECRET` | PayPal 收款 | 同上 |
+| `PAYPAL_MODE` | 沙箱/正式 | `sandbox` 或 `live` |
+| `GOOGLE_CLIENT_ID` | Google 登录 | Google Cloud Console → OAuth 同意屏 → 凭据 |
+| `GOOGLE_CLIENT_SECRET` | Google 登录 | 同上 |
+| `EMBEDDING_API_KEY` | 商品向量检索 | 百炼 / OpenAI text-embedding 密钥（未配则 RAG 回退关键词匹配） |
+| `17TRACK_API_KEY` | 真实物流轨迹 | 17TRACK 开放平台申请（未配则演示物流时间线） |
+| `DATABASE_URL` | 数据库连接 | 见 docker-compose 默认值，按需修改 |
+| `CORS_ORIGIN` | 允许的前端域名 | 如 `https://your-shop.com` |
+| `COOKIE_DOMAIN` | Cookie 作用域 | 如 `.your-shop.com` |
+
+---
+
+## 三、快速启动
+
+```bash
+# 1. 克隆代码后进入项目根目录
+cd GlobalEcom-AI
+
+# 2. 复制环境变量模板并填入密钥
+cp .env.example .env
+vim .env
+
+# 3. 启动全部服务（postgres 自动建库 + pgvector/pg_trgm 扩展）
+docker compose up -d --build
+
+# 4. 查看日志
+docker compose logs -f app
+
+# 5. 访问
+#    买家端: http://localhost:3000/
+#    卖家端: http://localhost:3000/seller/dashboard
+```
+
+---
+
+## 四、首次初始化
+
+1. **数据库扩展**：`docker/postgres/init.sql` 首次启动自动执行 `CREATE EXTENSION vector` 与 `pg_trgm`。
+2. **建表**：应用启动时 Drizzle 自动同步表结构（users / products / orders / payments / reviews / favorites / coupons / logistics / audit_logs / ai_usage_log 等）。
+3. **种子数据**：预置示例商品与分类；首个卖家账号可通过注册接口后在数据库把 `role` 改为 `seller`。
+4. **生产必做**：务必设置 `JWT_SECRET`，否则应用会拒绝启动。
+
+---
+
+## 五、常用命令
+
+```bash
+# 停止
+docker compose down
+
+# 停止并删除数据卷（慎用）
+docker compose down -v
+
+# 查看状态
+docker compose ps
+
+# 升级代码后重建
+git pull && docker compose up -d --build
+
+# 数据库备份
+docker compose exec postgres pg_dump -U postgres globalecom > backup_$(date +%F).sql
+
+# 数据库恢复
+docker compose exec -T postgres psql -U postgres globalecom < backup_2026-09-30.sql
+```
+
+---
+
+## 六、升级与备份建议
+
+- **升级**：先 `pg_dump` 备份，再 `git pull` + `docker compose up -d --build`；Drizzle 表结构为增量同步，建议升级前备份。
+- **备份**：每日定时 `pg_dump`；对象（商品图片）目前为 URL 引用，无需备份本地文件。
+- **日志**：`ai_usage_log`、`audit_logs` 会持续增长，建议定期归档。
+
+---
+
+## 七、常见问题
+
+| 现象 | 排查 |
+|---|---|
+| 应用启动即退出 | 检查 `JWT_SECRET` 是否设置（生产环境缺失会拒启动） |
+| AI 功能返回 400 | 检查 `LLM_BASE_URL` / `LLM_API_KEY` 是否填对 |
+| 支付仍是演示模式 | 未配 `STRIPE_SECRET_KEY` / `PAYPAL_CLIENT_ID`，属正常 |
+| Google 登录不可用 | 未配 `GOOGLE_CLIENT_ID/SECRET`，前端显示"即将上线" |
+| 物流为模拟时间线 | 未配 `17TRACK_API_KEY`，属正常 |
+| 登录后换设备要重新登录 | token 在 HttpOnly Cookie 中，浏览器级隔离；匿名购物车用"跨设备迁移码"导出/导入 |
+| 跨域 / Cookie 不生效 | 检查 `CORS_ORIGIN`、`COOKIE_DOMAIN` 与实际访问域名一致 |
