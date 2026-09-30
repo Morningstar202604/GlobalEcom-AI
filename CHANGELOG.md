@@ -5,6 +5,27 @@
 
 ---
 
+## [1.1.0] — 2026-10-01
+
+开源发布准备：文档体系全面对标成熟开源项目，项目转为 **MIT License** 开源。
+
+### Added
+- **MIT LICENSE**：项目正式开源（此前为"仅展示、版权归公司"）。
+- **README 全面重写（中英双语）**：新增产品 Hero（品牌 Logo）、产品截图展示区（16 张页面截图随仓库分发，收录于 `docs/screenshots/`）、5 个 AI Agent 详表、架构总览、快速开始（Docker 一键 + 本地开发 + 演示账号）、文档目录、路线图、贡献指引、安全与 License 章节；徽章扩展至 8 枚（四平台 / 版本 / Stars / MIT / TypeScript / PRs Welcome）。
+- **CONTRIBUTING.md**：贡献指南（开发环境、代码规范、提交信息格式、PR 流程、文档贡献）。
+- **SECURITY.md**：安全策略（漏洞私密报告流程、处理承诺、已开展的安全基线、部署安全建议）。
+- **CODE_OF_CONDUCT.md**：社区行为准则（Contributor Covenant 2.1）。
+- **docs/screenshots/**：16 张真实页面截图归档（买家 8 张 + 卖家 6 张 + AI 2 张），README 与文档引用本地路径，不依赖外部 CDN 短链。
+
+### Changed
+- README 版权声明由"仅展示、不放开源许可"更新为 **MIT License** 开源。
+
+### Verification
+- README 内所有图片引用均为仓库内本地路径（`client/src/assets/branding/`、`docs/screenshots/`），可离线渲染。
+- README 中所有功能描述与 `docs/` 四份文档、CHANGELOG 历史逐项核对一致，无虚构内容。
+
+---
+
 ## [1.0.0] — 2026-09-30
 
 品牌打磨 + 部署准备 + 收官全量审查修复，正式版本号 v1.0.0。
