@@ -17,6 +17,7 @@ One codebase, two experiences — a B2C buyer storefront and a seller AI workben
 [![GitCode](https://img.shields.io/badge/GitCode-badhope%2FGlobalEcom--AI-2F6BFF?style=flat-square&logo=git&logoColor=white)](https://gitcode.com/badhope/GlobalEcom-AI)
 [![Version](https://img.shields.io/badge/version-v1.0.0-00C2B8?style=flat-square)](https://github.com/X33834/GlobalEcom-AI/releases/tag/v1.0.0)
 [![Stars](https://img.shields.io/github/stars/X33834/GlobalEcom-AI?style=flat-square&logo=github&logoColor=white)](https://github.com/X33834/GlobalEcom-AI)
+[![CI](https://img.shields.io/github/actions/workflow/status/X33834/GlobalEcom-AI/ci.yml?style=flat-square&logo=githubactions&logoColor=white&label=CI)](https://github.com/X33834/GlobalEcom-AI/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Language: TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)]()
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](CONTRIBUTING.md)
